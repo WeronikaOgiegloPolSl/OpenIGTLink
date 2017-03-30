@@ -60,7 +60,7 @@ int main(int argc, char* argv[])
     exit(0);
     }
 
-  int    port     = atoi(argv[1]);
+  int    port = 10113;
 
   igtl::ServerSocket::Pointer serverSocket;
   serverSocket = igtl::ServerSocket::New();
@@ -144,7 +144,63 @@ int main(int argc, char* argv[])
 #if OpenIGTLink_PROTOCOL_VERSION >= 2
         else if (strcmp(headerMsg->GetDeviceType(), "POINT") == 0)
           {
-          ReceivePoint(socket, headerMsg);
+         // ReceivePoint(socket, headerMsg);
+
+		 // Create a message buffer to receive transform data
+			  igtl::PointMessage::Pointer pointMsg0;
+			  pointMsg0 = igtl::PointMessage::New();
+			  pointMsg0->SetMessageHeader(headerMsg);
+			  pointMsg0->AllocatePack();
+
+			  // Receive transform data from the socket
+			  socket->Receive(pointMsg0->GetPackBodyPointer(), pointMsg0->GetPackBodySize());
+
+			  // Deserialize the transform data
+			  // If you want to skip CRC check, call Unpack() without argument.
+			  int c = pointMsg0->Unpack();
+
+			  if (c & igtl::MessageHeader::UNPACK_BODY) // if CRC check is OK
+			  {
+				  int nElements = pointMsg0->GetNumberOfPointElement();
+				  for (int i = 0; i < nElements; i++)
+				  {
+					  igtl::PointElement::Pointer elements;
+					  pointMsg0->GetPointElement(i, elements);
+
+					  igtlUint8 rgba[4];
+					  elements->GetRGBA(rgba);
+
+					  igtlFloat32 x;
+					  igtlFloat32 y;
+					  igtlFloat32 z;
+					  elements->GetPosition(x, y, z);
+
+					  std::cerr << " Received " << std::endl;
+					  std::cerr << " Point position  : ( " << std::fixed << x << ", " << y << ", " << z << " )" << std::endl;
+
+					  elements->SetPosition(-x, -y, -z);
+
+					  igtlFloat32 position[3];
+					  elements->GetPosition(position);
+
+
+					  igtl::PointMessage::Pointer pointMsg1;
+					  pointMsg1 = igtl::PointMessage::New();
+
+					  igtl::PointElement::Pointer point0;
+					  point0 = igtl::PointElement::New();
+					  point0->SetPosition(position[0], position[1], position[2]);
+
+					  pointMsg1->AddPointElement(point0);
+					  pointMsg1->Pack();
+
+					  socket->Send(pointMsg1->GetPackPointer(), pointMsg1->GetPackSize());
+					  std::cerr << " Sended " << std::endl;
+					  std::cerr << " Point position  : ( " << std::fixed << -x << ", " << -y << ", " << -z << " )" << std::endl;
+				  }
+			  }
+			  return 1;
+
           }
         else if (strcmp(headerMsg->GetDeviceType(), "TRAJ") == 0)
           {
@@ -173,7 +229,8 @@ int main(int argc, char* argv[])
         }
       }
     }
-    
+
+	
   //------------------------------------------------------------
   // Close connection (The example code never reaches to this section ...)
   
@@ -377,7 +434,9 @@ int ReceivePoint(igtl::Socket * socket, igtl::MessageHeader * header)
       std::cerr << " Radius    : " << std::fixed << pointElement->GetRadius() << std::endl;
       std::cerr << " Owner     : " << pointElement->GetOwner() << std::endl;
       std::cerr << "================================" << std::endl;
-      }
+
+	  
+	      }
     }
 
   return 1;
